@@ -1,0 +1,13 @@
+[Unit]
+Description=enshrouded-discord
+After=network.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+User=enshrouded-discord
+EnvironmentFile=/etc/enshrouded-discord/.env
+WorkingDirectory=/opt/enshrouded-discord
+ExecStart=node node_modules/enshrouded-discord/index.js
+KillSignal=SIGINT

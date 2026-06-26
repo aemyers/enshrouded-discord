@@ -3,6 +3,10 @@
   "version": "0.0.0-snapshot",
   "type": "module",
   "main": "index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aemyers/enshrouded-discord.git"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",

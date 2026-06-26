@@ -5,6 +5,9 @@ import { PlayerCountHandler } from './handlers/player-count-handler.js';
 import { PlayerLoginHandler } from './handlers/player-login-handler.js';
 import { LogEventEmitter } from './log-event-emitter.js';
 import type { LogHandler } from './log-handler.js';
+import { VERSION } from './version.js';
+
+console.log(`version: ${VERSION}`)
 
 if (existsSync('.env')) loadEnvFile();
 

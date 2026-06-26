@@ -1,0 +1,159 @@
+name: version
+description: |
+  identify version based on reference;
+  to be identified as a release, reference must start with release-prefix and match release-valid after
+  otherwise, it is treated as a snapshot
+
+inputs:
+
+  release-prefix:
+    description: |
+      value reference must start with to be identified as a release;
+      removed from start of reference to produce version value for releases
+    default: 'refs/tags/v'
+
+  release-valid:
+    description: |
+      regular expression reference must end with to be identified as a release;
+      default value matches '1.0.0', '2.3.4', etc.
+    default: '[0-9]+\.[0-9]+\.[0-9]+'
+
+  release:
+    description: |
+      version format used when release has been identified;
+      where {0} is replaced with characters from reference after release-prefix
+      for example, given release-prefix as 'refs/tags/v' and reference as 'refs/tags/v1.0.0',
+      then '{0}' will be '1.0.0'
+    default: '{0}'
+
+  snapshot:
+    description: |
+      version format used when release has not been identified;
+      where {0} is replaced with short
+    default: '0.0.0-snapshot+{0}'
+
+  owner:
+    description: repository owner name
+    default: '${{ github.repository_owner }}'
+
+  repository:
+    description: repository name
+    default: '${{ github.event.repository.name }}'
+
+  reference:
+    description: git reference (refs/tags/v1.0.0)
+    default: '${{ github.ref }}'
+
+  short-length:
+    description: number of characters to include in short output from start of sha
+    default: 7
+
+  sanitize-dirty:
+    description: |
+      regular expression to match unsupported characters;
+      default is unsupported docker image tag characters
+    default: '[^a-zA-Z0-9._-]+'
+
+  sanitize-clean:
+    description: value to replace unsupported characters
+    default: '-'
+
+outputs:
+
+  version:
+    description: |
+      formatted based on identification of release or snapshot;
+      for example, when release is identified, version might be '1.0.0',
+      while for snapshots it might be '0.0.0-snapshot+a2c4e6g'.
+    value: ${{ steps.version.outputs.version }}
+
+  release:
+    description: true when release identified, otherwise false for snapshot
+    value: ${{ steps.release.outputs.release }}
+
+  sha:
+    description: full hash that uniquely identifies the commit which reference points to
+    value: ${{ steps.sha.outputs.sha }}
+
+  short:
+    description: truncated version of the full hash
+    value: ${{ steps.short.outputs.short }}
+
+  sanitized:
+    description: version with dirty characters replaced by clean characters
+    value: '${{ steps.sanitize.outputs.sanitized }}'
+
+runs:
+  using: composite
+  steps:
+
+  - name: sha
+    id: sha
+    uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+    env:
+      OWNER: '${{ inputs.owner }}'
+      REPOSITORY: '${{ inputs.repository }}'
+      REFERENCE: '${{ inputs.reference }}'
+    with:
+      script: |
+        const args = {
+          owner: process.env.OWNER,
+          repo: process.env.REPOSITORY,
+          ref: process.env.REFERENCE.replace(/^refs\//, ''),
+        };
+        const response = await github.rest.git.getRef(args);
+        core.info(`sha=${response.data.object.sha}`);
+        core.setOutput('sha', response.data.object.sha);
+
+  - name: short
+    id: short
+    shell: pwsh
+    env:
+      SHA: '${{ steps.sha.outputs.sha }}'
+      LENGTH: '${{ inputs.short-length }}'
+    run: |
+      $short = $Env:SHA.Substring(0, $Env:LENGTH)
+      "short=${short}" | Tee-Object -FilePath $Env:GITHUB_OUTPUT
+
+  - name: release
+    id: release
+    shell: pwsh
+    env:
+      PREFIX: '${{ inputs.release-prefix }}'
+      VALID: '${{ inputs.release-valid }}'
+      REFERENCE: '${{ inputs.reference }}'
+    run: |
+      $prefix = [regex]::Escape($Env:PREFIX)
+      $matches = $Env:REFERENCE -match "^${prefix}${Env:VALID}$"
+      $release = $matches.ToString().ToLower()
+      "release=${release}" | Tee-Object -FilePath $Env:GITHUB_OUTPUT
+
+  - name: version
+    id: version
+    shell: pwsh
+    env:
+      RELEASE: '${{ steps.release.outputs.release }}'
+      PREFIX: '${{ inputs.release-prefix }}'
+      RELEASE_FORMAT: '${{ inputs.release }}'
+      SNAPSHOT_FORMAT: '${{ inputs.snapshot }}'
+      REFERENCE: '${{ inputs.reference }}'
+      SHORT: '${{ steps.short.outputs.short }}'
+    run: |
+      $version = $Env:SNAPSHOT_FORMAT -f $Env:SHORT
+      if ( $Env:RELEASE -eq 'true' ) {
+        $prefix = [regex]::Escape($Env:PREFIX)
+        $after = $Env:REFERENCE -replace "^${prefix}"
+        $version = $Env:RELEASE_FORMAT -f $after
+      }
+      "version=${version}" | Tee-Object -FilePath $Env:GITHUB_OUTPUT
+
+  - name: sanitize
+    id: sanitize
+    shell: pwsh
+    env:
+      VERSION: '${{ steps.version.outputs.version }}'
+      DIRTY: '${{ inputs.sanitize-dirty }}'
+      CLEAN: '${{ inputs.sanitize-clean }}'
+    run: |
+      $sanitized = $Env:VERSION -replace $Env:DIRTY, $Env:CLEAN
+      "sanitized=$sanitized" | Tee-Object -FilePath $Env:GITHUB_OUTPUT
